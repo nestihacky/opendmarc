@@ -40,13 +40,14 @@ my $def_dbhost    = "localhost";
 my $def_dbname    = "opendmarc";
 my $def_dbuser    = "opendmarc";
 my $def_dbpasswd  = "opendmarc";
-my $def_dbport    = "3306";
+my $def_dbport    = "5432";
 my $dbhost;
 my $dbname;
 my $dbuser;
 my $dbpasswd;
 my $dbport;
 
+# my $dbscheme      = "Pg";
 my $dbscheme      = "@SQL_BACKEND@";
 
 my $def_maxage    = 180;
@@ -219,8 +220,8 @@ if ($verbose)
 	print STDERR "$progname: expiring messages older than $maxage day(s)\n";
 }
 
-$dbi_s = $dbi_h->prepare("DELETE FROM messages WHERE date <= DATE_SUB(CURRENT_TIMESTAMP(), INTERVAL ? DAY)");
-$rows = $dbi_s->execute($maxage);
+$dbi_s = $dbi_h->prepare("DELETE FROM messages WHERE date <= (now()::timestamp - ?::interval)");
+$rows = $dbi_s->execute($maxage . " days");
 if (!$rows)
 {
 	print STDERR "$progname: DELETE failed: " . $dbi_h->errstr;
@@ -340,7 +341,7 @@ if ($verbose)
 	print STDERR "$progname: expiring request data older than $maxage days\n";
 }
 
-$dbi_s = $dbi_h->prepare("DELETE FROM requests WHERE lastsent <= DATE_SUB(CURRENT_TIMESTAMP(), INTERVAL ? DAY) AND NOT lastsent = '0000-00-00 00:00:00'");
+$dbi_s = $dbi_h->prepare("DELETE FROM requests WHERE lastsent <= (now()::timestamp - '? day'::interval) AND NOT lastsent = NULL");
 $rows = $dbi_s->execute($maxage);
 if (!$rows)
 {

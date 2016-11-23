@@ -120,7 +120,7 @@ my $def_dbhost    = "localhost";
 my $def_dbname    = "opendmarc";
 my $def_dbuser    = "opendmarc";
 my $def_dbpasswd  = "opendmarc";
-my $def_dbport    = "3306";
+my $def_dbport    = "5432";
 my $def_interval  = "86400";
 my $dbhost;
 my $dbname;
@@ -348,7 +348,7 @@ if (defined($forcedomain))
 }
 elsif ($daybound)
 {
-	$dbi_s = $dbi_h->prepare("SELECT domains.name FROM requests JOIN domains ON requests.domain = domains.id WHERE DATE(lastsent) < DATE(FROM_UNIXTIME(?))");
+	$dbi_s = $dbi_h->prepare("SELECT domains.name FROM requests JOIN domains ON requests.domain = domains.id WHERE lastsent < to_timestamp(?)");
 
 	if (!$dbi_s->execute($now))
 	{
@@ -360,7 +360,7 @@ elsif ($daybound)
 }
 else
 {
-	$dbi_s = $dbi_h->prepare("SELECT domains.name FROM requests JOIN domains ON requests.domain = domains.id WHERE lastsent <= DATE_SUB(FROM_UNIXTIME(?), INTERVAL ? SECOND)");
+	$dbi_s = $dbi_h->prepare("SELECT domains.name FROM requests JOIN domains ON requests.domain = domains.id WHERE lastsent <= (to_timestamp(?)::timestamp - ?::interval)");
 
 	if (!$dbi_s->execute($now, $interval))
 	{
@@ -441,7 +441,7 @@ foreach (@$domainset)
 		next;
 	}
 
-	$dbi_s = $dbi_h->prepare("SELECT repuri, adkim, aspf, policy, spolicy, pct, UNIX_TIMESTAMP(lastsent) FROM requests WHERE domain = ?");
+	$dbi_s = $dbi_h->prepare("SELECT repuri, adkim, aspf, policy, spolicy, pct, lastsent::abstime::int4 FROM requests WHERE domain = ?");
 	if (!$dbi_s->execute($domainid))
 	{
 		print STDERR "$progname: can't get reporting URI for domain $domain: " . $dbi_h->errstr . "\n";
@@ -549,7 +549,6 @@ foreach (@$domainset)
  		else		{ $spolicystr = "unknown"; }
  	}
 
-
 	print $tmpout "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>\n";
 	print $tmpout "<feedback>\n";
 
@@ -574,11 +573,11 @@ foreach (@$domainset)
 
 	if ($daybound)
 	{
-		$dbi_s = $dbi_h->prepare("SELECT messages.id, ipaddr.addr, messages.disp, d1.name, d2.name, messages.spf, messages.align_spf, messages.align_dkim FROM messages JOIN ipaddr ON messages.ip = ipaddr.id JOIN domains d1 ON messages.from_domain = d1.id JOIN domains d2 ON messages.env_domain = d2.id WHERE messages.from_domain = ? AND DATE(messages.date) >= DATE(FROM_UNIXTIME(?)) AND DATE(messages.date) < DATE(FROM_UNIXTIME(?))");
+		$dbi_s = $dbi_h->prepare("SELECT messages.id, ipaddr.addr, messages.disp, d1.name, d2.name, messages.spf, messages.align_spf, messages.align_dkim FROM messages JOIN ipaddr ON messages.ip = ipaddr.id JOIN domains d1 ON messages.from_domain = d1.id JOIN domains d2 ON messages.env_domain = d2.id WHERE messages.from_domain = ? AND messages.date::date >= to_timestamp(?)::date AND messages.date::date < to_timestamp(?)::date");
 	}
 	else
 	{
-		$dbi_s = $dbi_h->prepare("SELECT messages.id, ipaddr.addr, messages.disp, d1.name, d2.name, messages.spf, messages.align_spf, messages.align_dkim FROM messages JOIN ipaddr ON messages.ip = ipaddr.id JOIN domains d1 ON messages.from_domain = d1.id JOIN domains d2 ON messages.env_domain = d2.id WHERE messages.from_domain = ? AND messages.date > FROM_UNIXTIME(?) AND messages.date <= FROM_UNIXTIME(?)");
+		$dbi_s = $dbi_h->prepare("SELECT messages.id, ipaddr.addr, messages.disp, d1.name, d2.name, messages.spf, messages.align_spf, messages.align_dkim FROM messages JOIN ipaddr ON messages.ip = ipaddr.id JOIN domains d1 ON messages.from_domain = d1.id JOIN domains d2 ON messages.env_domain = d2.id WHERE messages.from_domain = ? AND messages.date > to_timestamp(?) AND messages.date <= to_timestamp(?)");
 	}
 
 	if (!$dbi_s->execute($domainid, $repstart, $repend))
@@ -931,7 +930,7 @@ foreach (@$domainset)
 	# update "last sent" timestamp
 	if ($doupdate)
 	{
-		$dbi_s = $dbi_h->prepare("UPDATE requests SET lastsent = FROM_UNIXTIME(?) WHERE domain = ?");
+		$dbi_s = $dbi_h->prepare("UPDATE requests SET lastsent = to_timestamp(?) WHERE domain = ?");
 		if (!$dbi_s->execute($repend, $domainid))
 		{
 			print STDERR "$progname: can't update last sent time for domain $domain: " . $dbi_h->errstr . "\n";
